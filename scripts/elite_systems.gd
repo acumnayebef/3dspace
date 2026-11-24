@@ -219,6 +219,7 @@ static func load_profile() -> Dictionary:
 		"cargo_level": 0,
 		"fss_level": 0,
 		"jetpack_level": 0,
+		"selected_ship": "striker",
 	}
 	if not FileAccess.file_exists(PROFILE_PATH):
 		return defaults

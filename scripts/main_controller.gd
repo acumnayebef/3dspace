@@ -13,13 +13,18 @@ var parked_ship_node := Node3D.new()
 var parked_ship_visual: Node3D
 var camera_boom := Node3D.new()
 
-var orbit_lines_mesh := ImmediateMesh.new()
+var orbit_lines_mesh := ArrayMesh.new()
 var orbit_lines_node := MeshInstance3D.new()
 
 var terrain_root := Node3D.new()
 var terrain_mesh_inst := MeshInstance3D.new()
 var ocean_mesh_inst := MeshInstance3D.new()
+var cloud_mesh_inst := MeshInstance3D.new()
 var surface_props_node: Node3D = null
+var reentry_node: MeshInstance3D = null
+var reentry_mat: ShaderMaterial = null
+var reentry_heat: float = 0.0
+var _sky_mat: ShaderMaterial = null
 
 var dust_root := Node3D.new()
 var dust_items: Array[Dictionary] = []
@@ -27,6 +32,9 @@ var dust_items: Array[Dictionary] = []
 var body_nodes: Dictionary = {}
 var planet_meshes: Dictionary = {}
 var planet_mats: Dictionary = {}
+var atmo_mats: Dictionary = {}
+var atmo_nodes: Dictionary = {}
+var ring_mats: Dictionary = {}
 var station_nodes: Dictionary = {}
 
 # --- State exposed to HUD ---
@@ -65,6 +73,7 @@ var target_body: Dictionary
 var screen_markers: Array[Dictionary] = []
 
 var pilot_profile: Dictionary = {}
+var selected_ship_id: String = "striker"
 var docked_station: Dictionary = {}
 var has_docked_station: bool = false
 var nearby_station: Dictionary = {}
@@ -141,6 +150,41 @@ var _base_env_sky: Sky
 var _disk_ring_tex_cache: Dictionary = {}
 var _galaxy_tex_cache: Dictionary = {}
 
+func _rebuild_player_ship() -> void:
+	if third_person_node != null:
+		if third_person_node.get_parent() != null:
+			third_person_node.get_parent().remove_child(third_person_node)
+		third_person_node.queue_free()
+		third_person_node = null
+	if parked_ship_visual != null:
+		if parked_ship_visual.get_parent() != null:
+			parked_ship_visual.get_parent().remove_child(parked_ship_visual)
+		parked_ship_visual.queue_free()
+		parked_ship_visual = null
+
+	var built_ship := ShipBuilder.build_ship_node(selected_ship_id)
+	third_person_node = built_ship["root"]
+	landing_gear_node = built_ship["landing_gear"]
+	exhaust_nodes.clear()
+	for fl in built_ship["exhaust_nodes"]:
+		exhaust_nodes.append(fl)
+	reentry_node = built_ship["reentry_node"]
+	reentry_mat = built_ship["reentry_mat"]
+	ship_visual.add_child(third_person_node)
+
+	var parked_built := ShipBuilder.build_ship_node(selected_ship_id)
+	parked_ship_visual = parked_built["root"]
+	if parked_built["landing_gear"] != null:
+		(parked_built["landing_gear"] as Node3D).visible = true
+	parked_ship_node.add_child(parked_ship_visual)
+
+func select_ship(ship_id: String) -> void:
+	var spec := ShipBuilder.find_ship(ship_id)
+	selected_ship_id = spec["id"]
+	pilot_profile["selected_ship"] = selected_ship_id
+	EliteSystems.save_profile(pilot_profile)
+	_rebuild_player_ship()
+
 func step_time_warp(delta_idx: int) -> void:
 	time_warp_index = clampi(time_warp_index + delta_idx, 0, TIME_WARP_STEPS.size() - 1)
 
@@ -158,8 +202,12 @@ func stop_ship() -> void:
 	ship_vel64 = UniverseCatalog.v64()
 
 const SHADER_PLANET := preload("res://shaders/planet.gdshader")
+const SHADER_PLANET_TEX := preload("res://shaders/planet_textured.gdshader")
+const SHADER_ATMO_SHELL := preload("res://shaders/atmosphere_shell.gdshader")
+const SHADER_SATURN_RING := preload("res://shaders/saturn_ring.gdshader")
 const SHADER_STAR := preload("res://shaders/star.gdshader")
 const SHADER_BH := preload("res://shaders/black_hole.gdshader")
+const SHADER_BH_RAY := preload("res://shaders/black_hole_raymarch.gdshader")
 const SHADER_ACCRETION := preload("res://shaders/accretion_disk.gdshader")
 
 func _id_seed(id_str: String) -> float:
@@ -171,21 +219,15 @@ func _id_seed(id_str: String) -> float:
 func _ready() -> void:
 	target_body = UniverseCatalog.find_body("earth")
 	pilot_profile = EliteSystems.load_profile()
+	selected_ship_id = str(pilot_profile.get("selected_ship", "striker"))
 	_base_env_sky = world_env.environment.sky
+	_sky_mat = _base_env_sky.sky_material as ShaderMaterial
 
 	add_child(ship_node)
 	ship_node.add_child(ship_visual)
-	var built_ship := ShipBuilder.build_ship_node()
-	third_person_node = built_ship["root"]
-	landing_gear_node = built_ship["landing_gear"]
-	exhaust_nodes = built_ship["exhaust_nodes"]
-	ship_visual.add_child(third_person_node)
-
-	var parked_built := ShipBuilder.build_ship_node()
-	parked_ship_visual = parked_built["root"]
-	parked_ship_node.add_child(parked_ship_visual)
-	parked_ship_node.visible = false
 	add_child(parked_ship_node)
+	parked_ship_node.visible = false
+	_rebuild_player_ship()
 
 	ship_node.add_child(camera_boom)
 	main_camera.get_parent().remove_child(main_camera)
@@ -193,8 +235,10 @@ func _ready() -> void:
 	update_camera_mode()
 
 	terrain_root.visible = false
+	cloud_mesh_inst.visible = false
 	terrain_root.add_child(terrain_mesh_inst)
 	terrain_root.add_child(ocean_mesh_inst)
+	terrain_root.add_child(cloud_mesh_inst)
 	add_child(terrain_root)
 
 	orbit_lines_node.mesh = orbit_lines_mesh
@@ -232,6 +276,7 @@ func _build_space_dust() -> void:
 func _build_celestial_bodies() -> void:
 	var sphere_hi := SphereMesh.new(); sphere_hi.radius = 1.0; sphere_hi.height = 2.0; sphere_hi.radial_segments = 64; sphere_hi.rings = 32
 	var sphere_lo := SphereMesh.new(); sphere_lo.radius = 1.0; sphere_lo.height = 2.0; sphere_lo.radial_segments = 32; sphere_lo.rings = 16
+	var sphere_bh := SphereMesh.new(); sphere_bh.radius = 6.5; sphere_bh.height = 13.0; sphere_bh.radial_segments = 48; sphere_bh.rings = 24
 
 	for body in UniverseCatalog.get_bodies():
 		var bid: String = body["id"]
@@ -239,44 +284,37 @@ func _build_celestial_bodies() -> void:
 		root.rotation = Vector3(0, 0, body["axial_tilt_rad"])
 
 		var mesh_inst := MeshInstance3D.new()
-		mesh_inst.mesh = sphere_hi if (body["category"] == UniverseCatalog.BodyCategory.SOLAR or bid == "moon") else sphere_lo
+		mesh_inst.mesh = sphere_bh if body["is_black_hole"] else (sphere_hi if (body["category"] == UniverseCatalog.BodyCategory.SOLAR or bid == "moon") else sphere_lo)
 
 		if body["is_black_hole"]:
 			var sm := ShaderMaterial.new()
-			sm.shader = SHADER_BH
-			var rcol := Color(1.0, 0.68, 0.28)
-			var inner_c := Color(1.0, 0.94, 0.78)
-			var outer_c := Color(0.92, 0.34, 0.05)
-			var sharp := 9.0
-			var asym := 0.35
-			var halo := 0.28
-			var d_scale := 6.4
-			var spin_spd := 1.4
+			sm.shader = SHADER_BH_RAY
+			var inner_c := Color(1.0, 0.94, 0.80)
+			var outer_c := Color(0.84, 0.44, 0.14)
+			var spin_spd := 1.6
+			var d_rad := 5.2
+			var dop := 0.55
+			var rb := 1.45
 			if bid == "cygnus_x1":
-				rcol = Color(0.50, 0.85, 1.0)
-				inner_c = Color(0.88, 0.97, 1.0)
-				outer_c = Color(0.18, 0.52, 1.0)
-				sharp = 12.0; asym = 0.50; halo = 0.40; d_scale = 5.6; spin_spd = 3.2
-				_add_polar_jets(root, Color(0.45, 0.88, 1.0), 6.2, 0.22, true, 0.0)
+				inner_c = Color(0.92, 0.97, 1.0)
+				outer_c = Color(0.32, 0.56, 0.92)
+				spin_spd = 3.2; d_rad = 4.9; dop = 0.68; rb = 1.6
 			elif bid == "m87_star":
-				rcol = Color(1.0, 0.60, 0.14)
-				inner_c = Color(1.0, 0.82, 0.42)
-				outer_c = Color(0.85, 0.24, 0.04)
-				sharp = 7.5; asym = 0.65; halo = 0.32; d_scale = 7.4; spin_spd = 0.9
-				_add_polar_jets(root, Color(0.55, 0.78, 1.0), 11.5, 0.34, false, 8.0)
+				inner_c = Color(1.0, 0.84, 0.48)
+				outer_c = Color(0.88, 0.28, 0.05)
+				spin_spd = 1.0; d_rad = 5.6; dop = 0.65; rb = 1.7
 			elif bid == "ton618":
-				rcol = Color(1.0, 0.88, 0.55)
-				inner_c = Color(1.0, 0.96, 0.88)
-				outer_c = Color(0.75, 0.35, 1.0)
-				sharp = 6.2; asym = 0.42; halo = 0.62; d_scale = 9.2; spin_spd = 2.0
-				_add_polar_jets(root, Color(0.82, 0.58, 1.0), 14.0, 0.48, true, 0.0)
-			sm.set_shader_parameter("ring_color", Vector3(rcol.r, rcol.g, rcol.b))
-			sm.set_shader_parameter("ring_sharpness", sharp)
-			sm.set_shader_parameter("ring_intensity", 3.4)
-			sm.set_shader_parameter("asymmetry", asym)
-			sm.set_shader_parameter("lensed_halo", halo)
+				inner_c = Color(0.98, 0.98, 1.0)
+				outer_c = Color(0.70, 0.50, 0.98)
+				spin_spd = 2.1; d_rad = 6.0; dop = 0.52; rb = 1.85
+			sm.set_shader_parameter("inner_color", Vector3(inner_c.r, inner_c.g, inner_c.b))
+			sm.set_shader_parameter("outer_color", Vector3(outer_c.r, outer_c.g, outer_c.b))
+			sm.set_shader_parameter("spin_speed", spin_spd)
+			sm.set_shader_parameter("doppler_strength", dop)
+			sm.set_shader_parameter("disk_radius", d_rad)
+			sm.set_shader_parameter("disk_seed", _id_seed(bid))
+			sm.set_shader_parameter("ring_brightness", rb)
 			mesh_inst.material_override = sm
-			_add_bh_accretion_disk(root, inner_c, outer_c, d_scale, spin_spd, _id_seed(bid))
 		elif body["is_galaxy"]:
 			mesh_inst.visible = false
 			_add_galaxy_disc(root, body)
@@ -290,7 +328,11 @@ func _build_celestial_bodies() -> void:
 			var spots := 0.32
 			var flares := 0.25
 			var spd := 1.0
-			if bid == "crab_pulsar":
+			if bid == "sun":
+				g_scale = 11.0; spots = 0.22; flares = 0.32; spd = 0.85
+				sm.set_shader_parameter("use_tex", 1)
+				sm.set_shader_parameter("star_tex", load("res://textures/2k_sun.jpg"))
+			elif bid == "crab_pulsar":
 				g_scale = 16.0; spots = 0.08; flares = 0.95; spd = 6.5
 				_add_polar_jets(mesh_inst, Color(0.45, 0.85, 1.0), 12.0, 0.40, true, 32.0)
 			elif temp_k >= 8500:
@@ -313,64 +355,97 @@ func _build_celestial_bodies() -> void:
 			mesh_inst.material_override = sm
 			_add_star_corona(root, c1, c2, 1.24 if bid == "crab_pulsar" else (1.18 if temp_k >= 8500 else 1.12))
 		else:
-			var sm := ShaderMaterial.new()
-			sm.shader = SHADER_PLANET
-			var mode := 4
+			var real_tex_paths := {
+				"earth": "res://textures/2k_earth_daymap.jpg",
+				"moon": "res://textures/2k_moon.jpg",
+				"mars": "res://textures/2k_mars.jpg",
+				"mercury": "res://textures/2k_mercury.jpg",
+				"venus": "res://textures/2k_venus_atmosphere.jpg",
+				"jupiter": "res://textures/2k_jupiter.jpg",
+				"saturn": "res://textures/2k_saturn.jpg",
+				"uranus": "res://textures/2k_uranus.jpg",
+				"neptune": "res://textures/2k_neptune.jpg",
+			}
 			var atmo_str := 0.0
-			var atmo_c := Color(0.32, 0.62, 1.0)
-			var bump := 0.65
+			var atmo_c := Color(0.28, 0.60, 1.0)
+			var sunset_c := Color(0.95, 0.42, 0.14)
+			var bump := 0.55
 			if body["is_habitable"]:
-				mode = 1; atmo_str = 1.0; bump = 0.45
-				atmo_c = Color(0.30, 0.62, 1.0) if bid != "kepler186f" else Color(0.55, 0.70, 0.92)
+				atmo_str = 1.0; bump = 0.42
+				atmo_c = Color(0.24, 0.58, 1.0) if bid != "kepler186f" else Color(0.55, 0.70, 0.92)
 			elif bid in ["venus", "titan", "trappist1b"]:
-				mode = 6; atmo_str = 1.15; bump = 0.14
+				atmo_str = 1.15; bump = 0.10
 				atmo_c = Color(0.96, 0.78, 0.44) if bid == "venus" else (Color(0.90, 0.58, 0.22) if bid == "titan" else Color(0.92, 0.45, 0.22))
+				sunset_c = Color(1.0, 0.56, 0.18)
 			elif bid == "mars" or bid == "trappist1d":
-				mode = 2; atmo_str = 0.55; atmo_c = Color(0.88, 0.48, 0.26); bump = 0.62
+				atmo_str = 0.52; atmo_c = Color(0.86, 0.50, 0.30); sunset_c = Color(0.65, 0.68, 0.88); bump = 0.58
 			elif body["is_gas_giant"]:
-				mode = 3; atmo_str = 0.72; atmo_c = body["color"]; bump = 0.16
+				atmo_str = 0.70; atmo_c = body["color"]; bump = 0.10
 			elif body["is_icy"]:
-				mode = 5; atmo_str = 0.18 if body["has_atmosphere"] else 0.0; bump = 0.52
-			var c1: Color = body["color"]
-			var c2: Color = body["secondary_color"]
-			sm.set_shader_parameter("planet_mode", mode)
-			sm.set_shader_parameter("color_primary", Vector3(c1.r, c1.g, c1.b))
-			sm.set_shader_parameter("color_secondary", Vector3(c2.r, c2.g, c2.b))
-			sm.set_shader_parameter("atmo_color", Vector3(atmo_c.r, atmo_c.g, atmo_c.b))
-			sm.set_shader_parameter("has_cities", 1 if bid == "earth" else 0)
-			sm.set_shader_parameter("planet_seed", _id_seed(bid))
-			sm.set_shader_parameter("has_red_spot", 1.0 if bid == "jupiter" else 0.0)
-			sm.set_shader_parameter("atmo_strength", atmo_str)
-			sm.set_shader_parameter("cloud_amount", float(body["cloud_coverage"]))
-			sm.set_shader_parameter("bump_strength", bump)
+				atmo_str = 0.18 if body["has_atmosphere"] else 0.0; bump = 0.50
+
+			var sm := ShaderMaterial.new()
+			if real_tex_paths.has(bid):
+				sm.shader = SHADER_PLANET_TEX
+				sm.set_shader_parameter("albedo_tex", load(real_tex_paths[bid]))
+				sm.set_shader_parameter("is_earth", 1 if bid == "earth" else 0)
+				if bid == "earth":
+					sm.set_shader_parameter("night_tex", load("res://textures/2k_earth_nightmap.jpg"))
+					sm.set_shader_parameter("clouds_tex", load("res://textures/2k_earth_clouds.jpg"))
+					sm.set_shader_parameter("use_night", 1)
+					sm.set_shader_parameter("use_clouds", 1)
+				sm.set_shader_parameter("bump_strength", bump)
+				sm.set_shader_parameter("atmo_strength", atmo_str)
+				sm.set_shader_parameter("atmo_color", Vector3(atmo_c.r, atmo_c.g, atmo_c.b))
+			else:
+				sm.shader = SHADER_PLANET
+				var mode := 4
+				if body["is_habitable"]: mode = 1
+				elif bid in ["venus", "titan", "trappist1b"]: mode = 6
+				elif bid == "mars" or bid == "trappist1d": mode = 2
+				elif body["is_gas_giant"]: mode = 3
+				elif body["is_icy"]: mode = 5
+				var c1: Color = body["color"]
+				var c2: Color = body["secondary_color"]
+				sm.set_shader_parameter("planet_mode", mode)
+				sm.set_shader_parameter("color_primary", Vector3(c1.r, c1.g, c1.b))
+				sm.set_shader_parameter("color_secondary", Vector3(c2.r, c2.g, c2.b))
+				sm.set_shader_parameter("atmo_color", Vector3(atmo_c.r, atmo_c.g, atmo_c.b))
+				sm.set_shader_parameter("has_cities", 1 if bid == "earth" else 0)
+				sm.set_shader_parameter("planet_seed", _id_seed(bid))
+				sm.set_shader_parameter("has_red_spot", 1.0 if bid == "jupiter" else 0.0)
+				sm.set_shader_parameter("atmo_strength", atmo_str)
+				sm.set_shader_parameter("cloud_amount", float(body["cloud_coverage"]))
+				sm.set_shader_parameter("bump_strength", bump)
 			mesh_inst.material_override = sm
 			planet_mats[bid] = sm
 
+			if atmo_str > 0.25:
+				var shell_s := 1.032 if body["is_gas_giant"] else 1.045
+				_add_atmo_shell(root, bid, atmo_c, sunset_c, atmo_str * 0.85, shell_s)
+
 		if body["has_rings"] and not body["is_black_hole"]:
-			_add_disk_ring(root, false, bid == "uranus", body["secondary_color"])
+			_add_disk_ring(root, bid, bid == "uranus", body["secondary_color"])
 
 		root.add_child(mesh_inst)
 		add_child(root)
 		body_nodes[bid] = root
 		planet_meshes[bid] = mesh_inst
 
-func _add_bh_accretion_disk(root: Node3D, inner_c: Color, outer_c: Color, d_scale: float, spin_spd: float, d_seed: float) -> void:
+func _add_atmo_shell(root: Node3D, bid: String, day_c: Color, sunset_c: Color, dens: float, scale_r: float) -> void:
 	var sm := ShaderMaterial.new()
-	sm.shader = SHADER_ACCRETION
-	sm.set_shader_parameter("inner_color", Vector3(inner_c.r, inner_c.g, inner_c.b))
-	sm.set_shader_parameter("outer_color", Vector3(outer_c.r, outer_c.g, outer_c.b))
-	sm.set_shader_parameter("spin_speed", spin_spd)
-	sm.set_shader_parameter("turbulence", 1.15)
-	sm.set_shader_parameter("doppler_strength", 0.55)
-	sm.set_shader_parameter("inner_radius", 0.25)
-	sm.set_shader_parameter("disk_seed", d_seed)
-	var plane := QuadMesh.new()
-	plane.size = Vector2(d_scale, d_scale)
-	var inst := MeshInstance3D.new()
-	inst.mesh = plane
-	inst.material_override = sm
-	inst.rotation_degrees = Vector3(-90, 0, 0)
-	root.add_child(inst)
+	sm.shader = SHADER_ATMO_SHELL
+	sm.set_shader_parameter("day_color", Vector3(day_c.r, day_c.g, day_c.b))
+	sm.set_shader_parameter("sunset_color", Vector3(sunset_c.r, sunset_c.g, sunset_c.b))
+	sm.set_shader_parameter("density", dens)
+	var sph := SphereMesh.new()
+	sph.radius = scale_r; sph.height = scale_r * 2.0; sph.radial_segments = 48; sph.rings = 24
+	var sh := MeshInstance3D.new()
+	sh.mesh = sph
+	sh.material_override = sm
+	root.add_child(sh)
+	atmo_mats[bid] = sm
+	atmo_nodes[bid] = sh
 
 func _add_polar_jets(parent_node: Node3D, col: Color, length_s: float, radius_s: float, both_sides: bool, tilt_deg: float) -> void:
 	var jet_root := Node3D.new()
@@ -432,8 +507,25 @@ func _add_star_corona(root: Node3D, c1: Color, c2: Color, scale_s: float) -> voi
 	corona.material_override = mat
 	root.add_child(corona)
 
-func _add_disk_ring(root: Node3D, is_bh: bool, is_uranus: bool, tint: Color) -> void:
-	var cache_key := "%s_%s_%s" % [str(is_bh), str(is_uranus), tint.to_html(false)]
+func _add_disk_ring(root: Node3D, bid: String, is_uranus: bool, tint: Color) -> void:
+	var inst := MeshInstance3D.new()
+	var plane := QuadMesh.new()
+	var d_scale := 4.1 if is_uranus else 4.6
+	plane.size = Vector2(d_scale, d_scale)
+	inst.mesh = plane
+	inst.rotation_degrees = Vector3(-90, 0, 0)
+
+	if not is_uranus:
+		var sm := ShaderMaterial.new()
+		sm.shader = SHADER_SATURN_RING
+		sm.set_shader_parameter("ring_tex", load("res://textures/2k_saturn_ring_alpha.png"))
+		sm.set_shader_parameter("ring_scale", d_scale)
+		inst.material_override = sm
+		ring_mats[bid] = sm
+		root.add_child(inst)
+		return
+
+	var cache_key := "uranus_%s" % tint.to_html(false)
 	var tex: ImageTexture
 	if _disk_ring_tex_cache.has(cache_key):
 		tex = _disk_ring_tex_cache[cache_key]
@@ -447,13 +539,9 @@ func _add_disk_ring(root: Node3D, is_bh: bool, is_uranus: bool, tint: Color) -> 
 				var dy := (float(y) - half) / half
 				var r := sqrt(dx * dx + dy * dy)
 				var col := Color(0, 0, 0, 0)
-				if is_uranus and r > 0.62 and r < 0.94:
+				if r > 0.62 and r < 0.94:
 					var ring := 0.5 + 0.5 * sin(r * 95.0)
 					col = Color(0.72, 0.88, 0.96, ring * 0.35)
-				elif not is_uranus and r > 0.46 and r < 0.96:
-					if not (r > 0.74 and r < 0.78):
-						var band := 0.55 + 0.45 * sin(r * 140.0)
-						col = Color(0.78, 0.70, 0.54, band * 0.78)
 				img.set_pixel(x, y, col)
 		tex = ImageTexture.create_from_image(img)
 		_disk_ring_tex_cache[cache_key] = tex
@@ -462,13 +550,7 @@ func _add_disk_ring(root: Node3D, is_bh: bool, is_uranus: bool, tint: Color) -> 
 	mat.albedo_texture = tex
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var plane := QuadMesh.new()
-	var d_scale := 4.1 if is_uranus else 4.6
-	plane.size = Vector2(d_scale, d_scale)
-	var inst := MeshInstance3D.new()
-	inst.mesh = plane
 	inst.material_override = mat
-	inst.rotation_degrees = Vector3(-90, 0, 0)
 	root.add_child(inst)
 
 func _add_galaxy_disc(root: Node3D, body: Dictionary) -> void:
@@ -659,12 +741,14 @@ func warp_to_body(body: Dictionary) -> void:
 
 	var b_pos := UniverseCatalog.get_body_pos(body, sim_time_s)
 	var orbit_d: float = body["radius_m"] * 2.9
-	if body["is_black_hole"]: orbit_d = max(body["radius_m"] * 8.5, 50_000_000.0)
+	if body["is_black_hole"]: orbit_d = maxf(float(body["radius_m"]) * 7.6, 200_000.0)
 	elif body["is_galaxy"]: orbit_d = body["radius_m"] * 2.4
 	elif body["radius_m"] < 100_000.0: orbit_d = max(body["radius_m"] * 4.5, 120_000.0)
 
 	var off := Vector3(0.6, 0.25, 0.75).normalized()
-	if body["is_galaxy"] or body["is_black_hole"]:
+	if body["is_black_hole"]:
+		off = Vector3(0.14, 0.19, 0.97).normalized()
+	elif body["is_galaxy"]:
 		off = Vector3(0.45, 0.62, 0.64).normalized()
 	elif not body["is_star"] and UniverseCatalog.v64_len(b_pos) > 1_000.0:
 		var to_sun := UniverseCatalog.v64_to_vec3(UniverseCatalog.v64_norm(UniverseCatalog.v64_scale(b_pos, -1.0)))
@@ -681,8 +765,10 @@ func warp_to_surface_approach(body: Dictionary) -> void:
 		board_ship()
 	docked_station = {}; has_docked_station = false; docked_station_id = ""; is_fss_open = false
 	target_body = body
-	throttle = 0.0
+	var atmo_h: float = float(body["atmo_height_m"])
+	throttle = 0.28 if atmo_h > 0.0 else 0.0
 	ship_vel64 = UniverseCatalog.v64()
+	reentry_heat = 0.0
 	is_landed = false
 	auto_speed = true
 	last_terrain_alt = -1.0
@@ -698,13 +784,15 @@ func warp_to_surface_approach(body: Dictionary) -> void:
 	var off := SurfaceTerrain.find_scenic_approach_dir(body, b_pos, inv_rot)
 	var samp := SurfaceTerrain.sample_terrain(inv_rot * off, body)
 	var g_h: float = max(0.0, samp["height"]) if body["is_habitable"] else samp["height"]
+	var start_alt: float = minf(atmo_h * 0.65, 58_000.0) if atmo_h > 0.0 else 6_500.0
 
-	ship_pos64 = UniverseCatalog.v64_add(b_pos, UniverseCatalog.v64_scale(UniverseCatalog.v64(off.x, off.y, off.z), body["radius_m"] + g_h + 4_500.0))
+	ship_pos64 = UniverseCatalog.v64_add(b_pos, UniverseCatalog.v64_scale(UniverseCatalog.v64(off.x, off.y, off.z), body["radius_m"] + g_h + start_alt))
 	var to_sun := Vector3(-b_pos[0], -b_pos[1], -b_pos[2]).normalized() if UniverseCatalog.v64_len_sq(b_pos) > 1e6 else Vector3(0.6, 0.25, 0.75).normalized()
 	var sun_h := (to_sun - off * to_sun.dot(off)).normalized()
 	var side := off.cross(sun_h).normalized()
 	var h_fwd := (sun_h * 0.55 + side * 0.83).normalized()
-	var look_fwd := (h_fwd * cos(0.28) - off * sin(0.28)).normalized()
+	var d_pitch := 0.74 if atmo_h > 0.0 else 0.28
+	var look_fwd := (h_fwd * cos(d_pitch) - off * sin(d_pitch)).normalized()
 	ship_orient = _orientation_from_fwd_up(look_fwd, off)
 	orbit_yaw = 0.0; orbit_pitch = -0.16
 	update_camera_mode()
@@ -1204,6 +1292,10 @@ func _process(delta: float) -> void:
 			if built["ocean_mesh"] != null:
 				ocean_mesh_inst.mesh = built["ocean_mesh"]
 				ocean_mesh_inst.material_override = built["ocean_mat"]
+			cloud_mesh_inst.visible = built["cloud_mesh"] != null
+			if built["cloud_mesh"] != null:
+				cloud_mesh_inst.mesh = built["cloud_mesh"]
+				cloud_mesh_inst.material_override = built["cloud_mat"]
 			active_collision = built["collision"]
 			active_surface_body_id = near_b["id"]
 			last_terrain_anchor_local64 = UniverseCatalog.rotate_body_world_to_local64(near_b, sim_time_s, UniverseCatalog.v64_sub(ship_pos64, near_pos))
@@ -1238,33 +1330,60 @@ func _process(delta: float) -> void:
 		terrain_root.quaternion = (near_rot * last_terrain_build_rot.inverse()).normalized()
 	else:
 		terrain_root.visible = false
+		cloud_mesh_inst.visible = false
 		active_collision = null
 		active_surface_body_id = ""
 		last_terrain_alt = -1.0
 		has_props_for_anchor = false
 
-	# Атмосферное небо / туман (Compatibility-дружелюбно)
+	# Плавный вход в атмосферу, плазменный нагрев и атмосферное градиентное небо
 	var atmo_h: float = near_b["atmo_height_m"]
 	var atmo_d := 0.0
 	if atmo_h > 0.0 and upd_surf_dist < atmo_h:
 		var hn := clampf(upd_surf_dist / atmo_h, 0.0, 1.0)
 		atmo_d = exp(-hn * 3.8) * (1.0 - hn)
-	if atmo_d > 0.02:
-		var to_sun_b := UniverseCatalog.v64_to_vec3(UniverseCatalog.v64_norm(UniverseCatalog.v64_scale(near_pos, -1.0))).normalized()
-		var day_f := clampf((to_sun_b.dot(UniverseCatalog.v64_to_vec3(up_w64)) + 0.22) / 0.40, 0.0, 1.0)
-		var sky_c: Color = SurfaceTerrain.atmosphere_fog_color(near_b) * (0.12 + 0.88 * day_f)
-		world_env.environment.background_mode = Environment.BG_COLOR
-		world_env.environment.background_color = sky_c
-		world_env.environment.ambient_light_energy = 0.28 + atmo_d * day_f * 0.32
-		world_env.environment.fog_enabled = true
-		world_env.environment.fog_light_color = sky_c * 0.80
-		world_env.environment.fog_light_energy = 0.65
-		world_env.environment.fog_density = 0.000010 * atmo_d
+
+	var is_flying_in_atmo := (not is_walking) and (not is_landed) and (not is_free_camera) and (not is_main_menu) and (not has_docked_station) and atmo_d > 0.015
+	var target_heat := 0.0
+	if is_flying_in_atmo and actual_spd > 280.0:
+		target_heat = clampf(((actual_spd - 280.0) / 1_400.0) * clampf(atmo_d * 2.5, 0.0, 1.0), 0.0, 1.4)
+	reentry_heat = lerpf(reentry_heat, target_heat, minf(1.0, real_dt * 5.0))
+	if reentry_node != null and reentry_mat != null:
+		reentry_node.visible = reentry_heat > 0.02
+		if reentry_node.visible:
+			reentry_mat.set_shader_parameter("intensity", reentry_heat)
+	if reentry_heat > 0.08 and not is_landed and not is_walking:
+		var t_wall := float(Time.get_ticks_msec()) * 0.001
+		main_camera.h_offset = sin(t_wall * 65.0) * 0.022 * reentry_heat
+		main_camera.v_offset = cos(t_wall * 53.0) * 0.022 * reentry_heat
 	else:
+		main_camera.h_offset = 0.0
+		main_camera.v_offset = 0.0
+
+	if _sky_mat != null:
 		world_env.environment.background_mode = Environment.BG_SKY
 		world_env.environment.sky = _base_env_sky
-		world_env.environment.ambient_light_energy = 0.48 if (near_b["is_landable"] and upd_surf_dist < 240_000.0) else 0.35
-		world_env.environment.fog_enabled = false
+		if atmo_h > 0.0 and upd_surf_dist < atmo_h:
+			var sky_blend := clampf(pow(1.0 - clampf(upd_surf_dist / atmo_h, 0.0, 1.0), 1.55) * 1.15, 0.0, 1.0)
+			var to_sun_b := UniverseCatalog.v64_to_vec3(UniverseCatalog.v64_norm(UniverseCatalog.v64_scale(near_pos, -1.0))).normalized()
+			var up_n := UniverseCatalog.v64_to_vec3(up_w64).normalized()
+			var day_f := clampf((to_sun_b.dot(up_n) + 0.22) / 0.40, 0.0, 1.0)
+			var fog_c: Color = SurfaceTerrain.atmosphere_fog_color(near_b)
+			var zen_c := Color(fog_c.r * 0.24, fog_c.g * 0.44, minf(1.0, fog_c.b * 0.92))
+			_sky_mat.set_shader_parameter("zenith_color", Vector3(zen_c.r, zen_c.g, zen_c.b))
+			_sky_mat.set_shader_parameter("horizon_color", Vector3(fog_c.r, fog_c.g, fog_c.b))
+			_sky_mat.set_shader_parameter("sun_dir", to_sun_b)
+			_sky_mat.set_shader_parameter("up_dir", up_n)
+			_sky_mat.set_shader_parameter("atmo_blend", sky_blend)
+			world_env.environment.ambient_light_energy = 0.28 + atmo_d * day_f * 0.34
+			world_env.environment.fog_enabled = atmo_d > 0.03
+			world_env.environment.fog_light_color = (fog_c * (0.12 + 0.88 * day_f)) * 0.78
+			world_env.environment.fog_light_energy = 0.55
+			world_env.environment.fog_density = 0.000008 * atmo_d
+		else:
+			_sky_mat.set_shader_parameter("atmo_blend", 0.0)
+			world_env.environment.ambient_light_energy = 0.36 if (near_b["is_landable"] and upd_surf_dist < 240_000.0) else 0.08
+			world_env.environment.fog_enabled = false
 
 	# Обновление всех 61 небесных тел и меток
 	var prio_m: Array[Dictionary] = []
@@ -1284,7 +1403,15 @@ func _process(delta: float) -> void:
 		node.visible = true
 		var c_res := compress_to_scene(rel)
 		var r_scale := maxf(0.35, b["radius_m"] * c_res["scale"])
-		node.position = c_res["pos"]
+		var bh_pos: Vector3 = c_res["pos"]
+		if b["is_black_hole"]:
+			var bh_dist := bh_pos.length()
+			var max_far_extent := bh_dist + r_scale * 6.6
+			if max_far_extent > 3_200_000.0:
+				var shrink := 3_200_000.0 / max_far_extent
+				bh_pos *= shrink
+				r_scale *= shrink
+		node.position = bh_pos
 		node.scale = Vector3(r_scale, r_scale, r_scale)
 
 		var mesh: MeshInstance3D = planet_meshes[bid]
@@ -1295,13 +1422,22 @@ func _process(delta: float) -> void:
 
 		if terrain_vis and bid == near_b["id"] and upd_surf_dist <= 100_000.0:
 			mesh.visible = false
+			if atmo_nodes.has(bid):
+				(atmo_nodes[bid] as MeshInstance3D).visible = false
 		else:
 			mesh.visible = not b["is_galaxy"]
+			if atmo_nodes.has(bid):
+				(atmo_nodes[bid] as MeshInstance3D).visible = true
 
 		if planet_mats.has(bid):
 			var to_sun_v := UniverseCatalog.v64_to_vec3(UniverseCatalog.v64_norm(UniverseCatalog.v64_scale(bp, -1.0))).normalized()
-			var inv_spin := (Quaternion(Vector3.UP, -spin_ang) * Quaternion(Vector3(0, 0, 1), -b["axial_tilt_rad"])).normalized()
+			var inv_tilt := Quaternion(Vector3(0, 0, 1), -b["axial_tilt_rad"]).normalized()
+			var inv_spin := (Quaternion(Vector3.UP, -spin_ang) * inv_tilt).normalized()
 			(planet_mats[bid] as ShaderMaterial).set_shader_parameter("sun_dir_local", inv_spin * to_sun_v)
+			if atmo_mats.has(bid):
+				(atmo_mats[bid] as ShaderMaterial).set_shader_parameter("sun_dir_local", inv_tilt * to_sun_v)
+			if ring_mats.has(bid):
+				(ring_mats[bid] as ShaderMaterial).set_shader_parameter("sun_dir_local", inv_tilt * to_sun_v)
 
 		var hide_m: bool = terrain_vis and bid == near_b["id"] and upd_surf_dist < 100_000.0
 		if show_markers and not is_walking and not is_main_menu and not has_docked_station and not hide_m:
@@ -1380,7 +1516,20 @@ func _process(delta: float) -> void:
 	is_over_water = last_is_water
 	is_near_surface = (near_b["is_landable"] and upd_surf_dist < 240_000.0) or atmo_d > 0.002
 	can_auto_land = (not is_landed) and (not is_walking) and (not is_free_camera) and near_b["is_landable"] and radar_alt < 1_800.0 and (not last_is_water)
-	zone_text = "ПРОГУЛКА" if is_walking else ("ПОСАДКА" if is_landed else ("АТМОСФЕРА" if atmo_d > 0.002 else ("СНИЖЕНИЕ" if (near_b["is_landable"] and upd_surf_dist < 240_000.0) else "")))
+	if is_walking:
+		zone_text = "ПРОГУЛКА"
+	elif is_landed:
+		zone_text = "ПОСАДКА"
+	elif near_b["is_landable"] and last_is_water and radar_alt < 4_000.0:
+		zone_text = "ОКЕАН • ЛЕТИТЕ К СУШЕ"
+	elif reentry_heat > 0.10:
+		zone_text = "ВХОД В АТМОСФЕРУ"
+	elif atmo_d > 0.002:
+		zone_text = "АТМОСФЕРА"
+	elif near_b["is_landable"] and upd_surf_dist < 240_000.0:
+		zone_text = "СНИЖЕНИЕ"
+	else:
+		zone_text = ""
 	surface_alt_text = ("ГРАВ: %.2f g" % near_b["surface_gravity_g"]) if is_walking else ("НА ПОВЕРХНОСТИ" if is_landed else (("ВЫС: %.0f м" % radar_alt) if radar_alt < 1_000.0 else ("ВЫС: %.1f км" % (radar_alt / 1_000.0))))
 	var days := int(floor(sim_time_s / 86_400.0))
 	sim_date_text = "Д+%d" % days if days != 0 else "24.11.2026"
@@ -1414,3 +1563,8 @@ func _update_orbit_lines(pos_cache: Dictionary) -> void:
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	orbit_lines_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+
+func _exit_tree() -> void:
+	for meta_key in [&"space3d_pbr_cache", &"space3d_ship_catalog"]:
+		if Engine.has_meta(meta_key):
+			Engine.remove_meta(meta_key)

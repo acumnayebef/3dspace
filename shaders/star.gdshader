@@ -8,6 +8,8 @@ uniform float granule_scale = 8.0;
 uniform float spot_amount = 0.35;
 uniform float flare_intensity = 0.25;
 uniform float anim_speed = 1.0;
+uniform int use_tex = 0;
+uniform sampler2D star_tex : source_color, filter_linear_mipmap, repeat_enable;
 
 float hash31(vec3 p) {
     p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
@@ -53,10 +55,16 @@ void fragment() {
     float spot_factor = mix(1.0, 0.25 + 0.75 * spot_mask, spot_amount);
 
     float ndotv = clamp(abs(dot(normalize(NORMAL), normalize(VIEW))), 0.0, 1.0);
-    float limb = 0.32 + 0.68 * pow(max(0.0001, ndotv), 0.52);
+    float limb = 0.34 + 0.66 * pow(max(0.0001, ndotv), 0.50);
 
-    vec3 star_col = mix(cool_color * 0.62, hot_color * 1.25, smoothstep(0.22, 0.85, plasma));
-    star_col = star_col * spot_factor * limb + hot_color * flares;
+    vec3 star_col;
+    if (use_tex == 1) {
+        vec3 tcol = texture(star_tex, UV + vec2(tm * 0.001, 0.0)).rgb;
+        star_col = tcol * (0.82 + plasma * 0.45) * limb + hot_color * (flares * 0.65);
+    } else {
+        star_col = mix(cool_color * 0.62, hot_color * 1.25, smoothstep(0.22, 0.85, plasma));
+        star_col = star_col * spot_factor * limb + hot_color * flares;
+    }
 
     ALBEDO = star_col;
 }

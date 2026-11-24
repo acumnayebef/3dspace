@@ -1,11 +1,18 @@
-[gd_scene load_steps=7 format=3 uid="uid://dspace3dmain001"]
+[gd_scene load_steps=8 format=3 uid="uid://dspace3dmain001"]
 
 [ext_resource type="Script" path="res://scripts/main_controller.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/hud_controller.gd" id="2_hud"]
-[ext_resource type="Shader" path="res://shaders/sky_stars.gdshader" id="3_sky"]
+[ext_resource type="Shader" path="res://shaders/surface_sky.gdshader" id="3_sky"]
+[ext_resource type="Texture2D" path="res://textures/2k_stars_milky_way.jpg" id="4_mw"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_sky"]
 shader = ExtResource("3_sky")
+shader_parameter/milky_way_tex = ExtResource("4_mw")
+shader_parameter/zenith_color = Vector3(0.06, 0.22, 0.58)
+shader_parameter/horizon_color = Vector3(0.45, 0.68, 0.92)
+shader_parameter/sunset_color = Vector3(0.95, 0.48, 0.18)
+shader_parameter/sun_dir = Vector3(0.6, 0.35, 0.7)
+shader_parameter/atmo_blend = 0.0
 
 [sub_resource type="Sky" id="Sky_space"]
 sky_material = SubResource("ShaderMaterial_sky")
@@ -14,9 +21,9 @@ sky_material = SubResource("ShaderMaterial_sky")
 background_mode = 2
 sky = SubResource("Sky_space")
 ambient_light_source = 2
-ambient_light_color = Color(0.16, 0.22, 0.34, 1)
-ambient_light_energy = 0.35
-tonemap_mode = 2
+ambient_light_color = Color(0.14, 0.20, 0.34, 1)
+ambient_light_energy = 0.08
+tonemap_mode = 3
 glow_enabled = false
 
 [node name="Main" type="Node3D"]
@@ -26,14 +33,14 @@ script = ExtResource("1_main")
 environment = SubResource("Environment_space")
 
 [node name="SunLight" type="DirectionalLight3D" parent="."]
-light_color = Color(1, 0.98, 0.95, 1)
-light_energy = 1.2
+light_color = Color(1, 0.98, 0.96, 1)
+light_energy = 2.0
 shadow_enabled = false
 
 [node name="MainCamera" type="Camera3D" parent="."]
 fov = 62.0
-near = 0.25
-far = 650000.0
+near = 0.35
+far = 4000000.0
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("2_hud")

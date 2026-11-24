@@ -7,6 +7,8 @@ var main_menu_root := Control.new()
 var menu_sub_panel := PanelContainer.new()
 var menu_sub_title := Label.new()
 var menu_sub_body := Label.new()
+var menu_ship_scroll := ScrollContainer.new()
+var menu_ship_list := VBoxContainer.new()
 var menu_tg_btn := Button.new()
 var menu_btns: Array[Button] = []
 var selected_menu_idx: int = 0
@@ -151,14 +153,14 @@ func _build_main_menu() -> void:
 	left_pad.add_child(left_col)
 
 	var title := Label.new()
-	title.text = "S.P.A.C.E. 3D"
-	title.add_theme_font_size_override("font_size", 34)
+	title.text = "SPACE: ETERNITY"
+	title.add_theme_font_size_override("font_size", 32)
 	title.add_theme_color_override("font_color", Color(0.92, 0.95, 0.98))
 	left_col.add_child(title)
 
 	var line := ColorRect.new()
 	line.color = Color(0.75, 0.88, 0.95, 0.55)
-	line.custom_minimum_size = Vector2(240, 2)
+	line.custom_minimum_size = Vector2(260, 2)
 	left_col.add_child(line)
 
 	var sub := Label.new()
@@ -169,7 +171,7 @@ func _build_main_menu() -> void:
 
 	var sp1 := Control.new(); sp1.custom_minimum_size = Vector2(0, 20); left_col.add_child(sp1)
 
-	var items := ["ИГРАТЬ", "НАСТРОЙКИ", "АВТОРЫ"]
+	var items := ["ИГРАТЬ", "ЗВЕЗДОЛЁТ", "НАСТРОЙКИ", "АВТОРЫ"]
 	for i in range(items.size()):
 		var btn := Button.new()
 		btn.text = "  " + items[i]
@@ -183,7 +185,7 @@ func _build_main_menu() -> void:
 
 	var sp2 := Control.new(); sp2.size_flags_vertical = Control.SIZE_EXPAND_FILL; left_col.add_child(sp2)
 	var footer := Label.new()
-	footer.text = "SPACE 1:1 • GODOT 4 • @xantapers"
+	footer.text = "SPACE: ETERNITY • GODOT 4 • @xantapers"
 	footer.add_theme_font_size_override("font_size", 10)
 	footer.add_theme_color_override("font_color", Color(0.7, 0.75, 0.8, 0.6))
 	left_col.add_child(footer)
@@ -233,6 +235,13 @@ func _build_main_menu() -> void:
 	menu_sub_body.add_theme_color_override("font_color", Color(0.84, 0.88, 0.92))
 	mv.add_child(menu_sub_body)
 
+	menu_ship_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	menu_ship_scroll.visible = false
+	menu_ship_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	menu_ship_list.add_theme_constant_override("separation", 12)
+	menu_ship_scroll.add_child(menu_ship_list)
+	mv.add_child(menu_ship_scroll)
+
 	menu_tg_btn.text = "Перейти в Telegram: @xantapers"
 	menu_tg_btn.custom_minimum_size = Vector2(340, 46)
 	menu_tg_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -257,10 +266,81 @@ func _on_menu_click(idx: int) -> void:
 		menu_sub_tab = ""
 		main_ctrl.is_main_menu = false
 	elif idx == 1:
+		menu_sub_tab = "" if menu_sub_tab == "ships" else "ships"
+	elif idx == 2:
 		menu_sub_tab = "" if menu_sub_tab == "settings" else "settings"
 	else:
 		menu_sub_tab = "" if menu_sub_tab == "authors" else "authors"
 	_refresh_menu_styles()
+
+func _rebuild_ship_selector() -> void:
+	for ch in menu_ship_list.get_children():
+		ch.queue_free()
+	var active_id: String = str(main_ctrl.selected_ship_id)
+	var sel_norm := _style_box(Color(0.91, 0.90, 0.85), Color(0, 0, 0, 0), 4, 0)
+	var pick_norm := _style_box(Color(0.14, 0.22, 0.32), Color(0.25, 0.80, 1.0, 0.65), 4, 1)
+	var pick_hov := _style_box(Color(0.20, 0.34, 0.48), Color(0.45, 0.92, 1.0, 0.90), 4, 1)
+
+	for s in ShipBuilder.get_ship_catalog():
+		var sid: String = s["id"]
+		var is_sel := sid == active_id
+		var card := PanelContainer.new()
+		var border_c := Color(0.25, 0.86, 1.0, 0.95) if is_sel else Color(0.35, 0.45, 0.56, 0.45)
+		var bg_c := Color(0.08, 0.13, 0.19, 0.96) if is_sel else Color(0.05, 0.07, 0.10, 0.90)
+		card.add_theme_stylebox_override("panel", _style_box(bg_c, border_c, 8, 2 if is_sel else 1))
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		card.add_child(row)
+
+		var info_v := VBoxContainer.new()
+		info_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info_v.add_theme_constant_override("separation", 4)
+		row.add_child(info_v)
+
+		var n_lbl := Label.new()
+		n_lbl.text = "%s  •  %s" % [s["name"], s["role"]]
+		n_lbl.add_theme_font_size_override("font_size", 18)
+		n_lbl.add_theme_color_override("font_color", Color(0.40, 0.92, 1.0) if is_sel else Color(0.94, 0.96, 0.98))
+		info_v.add_child(n_lbl)
+
+		var d_lbl := Label.new()
+		d_lbl.text = s["summary"]
+		d_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+		d_lbl.add_theme_font_size_override("font_size", 13)
+		d_lbl.add_theme_color_override("font_color", Color(0.76, 0.82, 0.88))
+		info_v.add_child(d_lbl)
+
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(180, 44)
+		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		btn.add_theme_font_size_override("font_size", 14)
+		if is_sel:
+			btn.text = "✓ ВЫБРАН"
+			btn.add_theme_stylebox_override("normal", sel_norm)
+			btn.add_theme_stylebox_override("hover", sel_norm)
+			btn.add_theme_stylebox_override("pressed", sel_norm)
+			btn.add_theme_stylebox_override("focus", sel_norm)
+			btn.add_theme_color_override("font_color", Color(0.06, 0.08, 0.10))
+			btn.add_theme_color_override("font_hover_color", Color(0.06, 0.08, 0.10))
+			btn.add_theme_color_override("font_pressed_color", Color(0.06, 0.08, 0.10))
+			btn.add_theme_color_override("font_focus_color", Color(0.06, 0.08, 0.10))
+		else:
+			btn.text = "ВЫБРАТЬ"
+			btn.add_theme_stylebox_override("normal", pick_norm)
+			btn.add_theme_stylebox_override("hover", pick_hov)
+			btn.add_theme_stylebox_override("pressed", pick_hov)
+			btn.add_theme_stylebox_override("focus", pick_norm)
+			btn.add_theme_color_override("font_color", Color(0.94, 0.96, 0.99))
+			btn.add_theme_color_override("font_hover_color", Color.WHITE)
+			btn.add_theme_color_override("font_pressed_color", Color.WHITE)
+			btn.add_theme_color_override("font_focus_color", Color(0.94, 0.96, 0.99))
+		btn.pressed.connect(func():
+			main_ctrl.select_ship(sid)
+			_rebuild_ship_selector()
+		)
+		row.add_child(btn)
+		menu_ship_list.add_child(card)
 
 func _refresh_menu_styles() -> void:
 	var sel_sb := _style_box(Color(0.91, 0.90, 0.85), Color(0, 0, 0, 0), 2, 0)
@@ -289,14 +369,18 @@ func _refresh_menu_styles() -> void:
 			b.add_theme_color_override("font_pressed_color", Color.WHITE)
 			b.add_theme_color_override("font_focus_color", light_txt)
 	menu_sub_panel.visible = menu_sub_tab != ""
-	if menu_sub_tab == "settings":
+	menu_ship_scroll.visible = menu_sub_tab == "ships"
+	menu_tg_btn.visible = menu_sub_tab == "authors"
+	if menu_sub_tab == "ships":
+		menu_sub_title.text = "ВЫБОР ЗВЕЗДОЛЁТА"
+		menu_sub_body.text = "Выберите корабль — модель обновится в игре мгновенно."
+		_rebuild_ship_selector()
+	elif menu_sub_tab == "settings":
 		menu_sub_title.text = "НАСТРОЙКИ"
 		menu_sub_body.text = "Раздел настроек пока пуст."
-		menu_tg_btn.visible = false
 	elif menu_sub_tab == "authors":
 		menu_sub_title.text = "АВТОРЫ"
-		menu_sub_body.text = "Space 3D — Симулятор Вселенной 1:1\n\nНовости, обновления и комьюнити проекта в Telegram-канале автора: @xantapers"
-		menu_tg_btn.visible = true
+		menu_sub_body.text = "Space: Eternity — Симулятор Вселенной 1:1\n\nНовости, обновления и комьюнити проекта в Telegram-канале автора: @xantapers"
 
 func _build_ship_hud() -> void:
 	ship_hud.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -323,6 +407,9 @@ func _build_ship_hud() -> void:
 	menu_btn.pressed.connect(func():
 		catalog_panel.visible = false
 		info_panel.visible = false
+		menu_sub_tab = ""
+		selected_menu_idx = 0
+		_refresh_menu_styles()
 		main_ctrl.is_main_menu = true
 	)
 	top_h.add_child(menu_btn)

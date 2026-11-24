@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Space 3D"
-config/description="1:1 Space Simulator with procedural worlds, EVA, orbiting stations, trading & FSS — @xantapers"
+config/name="Space: Eternity"
+config/description="Space: Eternity — 1:1 Universe Simulator with real NASA/PolyHaven PBR textures, raymarched black holes & atmospheric entry — @xantapers"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 config/icon="res://icon.svg"

@@ -181,13 +181,13 @@ static func sample_terrain(local_dir: Vector3, body: Dictionary) -> Dictionary:
 		var mic_h := (_value_noise3d(dir * scale140) - 0.5) * 13.0
 		var h: float = max(2.0, land_f * 1_200.0 + ridges * m_mask * 4_400.0 + hills * 480.0 + loc_h + mic_h)
 
-		var arid := smoothstep(0.06, 0.30, abs(lat - 0.26)) * smoothstep(0.18, 0.78, detail)
-		var col := Color(0.42, 0.35, 0.22).lerp(Color(0.22, 0.32, 0.12).lerp(Color(0.06, 0.22, 0.08), detail), arid)
+		var arid := smoothstep(0.06, 0.30, absf(lat - 0.26)) * smoothstep(0.18, 0.78, detail)
+		var col := Color(0.92, 0.86, 0.72).lerp(Color(0.84, 0.92, 0.76).lerp(Color(0.72, 0.84, 0.66), detail), arid)
 		if bid == "proxima_b" or bid == "kepler186f":
-			col = col.lerp(Color(0.28, 0.17, 0.15), 0.32)
-		col = Color(0.56, 0.49, 0.34).lerp(col, smoothstep(8.0, 55.0, h))
-		col = col.lerp(Color(0.28, 0.27, 0.26), smoothstep(1_150.0, 2_200.0, h))
-		col = col.lerp(Color(0.84, 0.88, 0.92), smoothstep(2_800.0, 3_900.0, h + lat * 680.0))
+			col = col.lerp(Color(0.82, 0.68, 0.64), 0.35)
+		col = Color(0.95, 0.90, 0.76).lerp(col, smoothstep(8.0, 55.0, h))
+		col = col.lerp(Color(0.58, 0.56, 0.54), smoothstep(1_150.0, 2_200.0, h))
+		col = col.lerp(Color(0.95, 0.97, 1.0), smoothstep(2_800.0, 3_900.0, h + lat * 680.0))
 		return {"height": h, "color": col, "is_water": false}
 
 	if body["is_icy"]:
@@ -197,8 +197,8 @@ static func sample_terrain(local_dir: Vector3, body: Dictionary) -> Dictionary:
 		var craters := _crater_field3d(dir * 26.0) * 900.0
 		var mic := (_value_noise3d(dir * scale140) - 0.5) * 11.0
 		var h: float = (base - 0.48) * 1_800.0 + ridges * 1_600.0 + craters + loc_r + mic
-		var col := Color(0.24, 0.40, 0.56).lerp(Color(0.62, 0.73, 0.82), smoothstep(-700.0, 900.0, h))
-		col = col.lerp(Color(0.84, 0.89, 0.94), smoothstep(1_000.0, 2_400.0, h))
+		var col := Color(0.68, 0.80, 0.92).lerp(Color(0.88, 0.93, 0.98), smoothstep(-700.0, 900.0, h))
+		col = col.lerp(Color(0.98, 0.99, 1.0), smoothstep(1_000.0, 2_400.0, h))
 		return {"height": h, "color": col, "is_water": false}
 
 	if bid == "mars" or bid == "trappist1d":
@@ -209,10 +209,10 @@ static func sample_terrain(local_dir: Vector3, body: Dictionary) -> Dictionary:
 		var loc_r := (_ridged_fbm3d(dir * scale800, 3) - 0.35) * 160.0
 		var mic_b := (_value_noise3d(dir * scale140) - 0.5) * 12.0
 		var h: float = (base - 0.48) * 3_800.0 + ridges * 3_200.0 + craters * 950.0 + (mic_f - 0.45) * 420.0 + loc_r + mic_b
-		var col := Color(0.22, 0.09, 0.05).lerp(Color(0.52, 0.22, 0.11), smoothstep(-700.0, 1_500.0, h))
-		col = col.lerp(Color(0.68, 0.36, 0.19), smoothstep(1_200.0, 4_200.0, h + ridges * 700.0))
+		var col := Color(0.68, 0.56, 0.50).lerp(Color(0.92, 0.82, 0.74), smoothstep(-700.0, 1_500.0, h))
+		col = col.lerp(Color(0.98, 0.88, 0.78), smoothstep(1_200.0, 4_200.0, h + ridges * 700.0))
 		if lat + mic_f * 0.09 > 0.86:
-			col = Color(0.84, 0.82, 0.80)
+			col = Color(0.96, 0.95, 0.94)
 		return {"height": h, "color": col, "is_water": false}
 
 	if bid in ["moon", "mercury", "ceres", "phobos"]:
@@ -225,11 +225,11 @@ static func sample_terrain(local_dir: Vector3, body: Dictionary) -> Dictionary:
 		var amp := 0.25 if bid == "phobos" else 1.0
 		var h: float = ((maria - 0.48) * 2_400.0 + (rough - 0.45) * 850.0 + c_big * 2_200.0 + c_small * 650.0) * amp + c_loc + mic_b
 		var is_merc := bid == "mercury" or bid == "phobos"
-		var c_dark := Color(0.16, 0.15, 0.14) if is_merc else Color(0.15, 0.155, 0.165)
-		var c_mid := Color(0.32, 0.30, 0.28) if is_merc else Color(0.30, 0.305, 0.315)
-		var c_hi := Color(0.48, 0.45, 0.42) if is_merc else Color(0.50, 0.51, 0.53)
+		var c_dark := Color(0.62, 0.60, 0.58) if is_merc else Color(0.58, 0.60, 0.62)
+		var c_mid := Color(0.80, 0.78, 0.75) if is_merc else Color(0.82, 0.83, 0.85)
+		var c_hi := Color(0.96, 0.94, 0.90) if is_merc else Color(0.96, 0.97, 0.99)
 		var col := c_dark.lerp(c_mid, smoothstep(-1_200.0 * amp, 1_400.0 * amp, h))
-		col = col.lerp(c_hi, smoothstep(0.05, 0.42, max(0.0, c_big + c_small * 0.5) + (rough - 0.45) * 0.35))
+		col = col.lerp(c_hi, smoothstep(0.05, 0.42, maxf(0.0, c_big + c_small * 0.5) + (rough - 0.45) * 0.35))
 		return {"height": h, "color": col, "is_water": false}
 
 	# Вулканические / Титан / прочие
@@ -303,77 +303,22 @@ static func surface_pbr_textures(body: Dictionary) -> Dictionary:
 	if cache.has(key):
 		return cache[key]
 
-	var size: int = 256
-	var mask: int = size - 1
-	var inv_s: float = 1.0 / float(size)
-	var heights := PackedFloat32Array()
-	heights.resize(size * size)
-	var diff_img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	var norm_img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var diff_path := "res://textures/surface/rock_ground_02_diff_1k.jpg"
+	var norm_path := "res://textures/surface/rock_ground_02_nor_gl_1k.jpg"
+	match key:
+		"habitable":
+			diff_path = "res://textures/surface/aerial_grass_rock_diff_1k.jpg"
+			norm_path = "res://textures/surface/aerial_grass_rock_nor_gl_1k.jpg"
+		"mars":
+			diff_path = "res://textures/surface/red_sand_diff_1k.jpg"
+			norm_path = "res://textures/surface/red_sand_nor_gl_1k.jpg"
+		"icy":
+			diff_path = "res://textures/surface/snow_02_diff_1k.jpg"
+			norm_path = "res://textures/surface/snow_02_nor_gl_1k.jpg"
 
-	for py in range(size):
-		var v: float = float(py) * inv_s
-		for px in range(size):
-			var u: float = float(px) * inv_s
-			var macro := _periodic_noise2d(u, v, 8, 101) * 0.65 + _periodic_noise2d(u, v, 16, 203) * 0.35
-			var grain := _periodic_noise2d(u, v, 32, 307) * 0.65 + _periodic_noise2d(u, v, 64, 409) * 0.35
-			var grit := _periodic_noise2d(u, v, 128, 709)
-
-			var h := 0.0
-			var c := Color(0.8, 0.8, 0.8)
-			match key:
-				"lunar":
-					var pebbles := smoothstep(0.76, 0.94, grit)
-					h = macro * 0.40 + grain * 0.42 + grit * 0.18 + pebbles * 0.20
-					var lum := clampf(0.62 + 0.34 * grain + 0.16 * (grit - 0.5) - pebbles * 0.16, 0.36, 1.0)
-					c = Color(lum * 0.98, lum * 0.99, lum * 1.02)
-				"mars":
-					var ripple := sin((v + (macro - 0.5) * 0.14) * TAU * 12.0) * 0.5 + 0.5
-					var gravel := smoothstep(0.78, 0.96, grit)
-					h = macro * 0.36 + ripple * 0.34 + grain * 0.30 - gravel * 0.15
-					var lum_m := clampf(0.62 + 0.28 * grain + 0.18 * ripple - gravel * 0.18, 0.38, 1.0)
-					c = Color(lum_m, lum_m * 0.88, lum_m * 0.78)
-				"habitable":
-					var blade := _periodic_noise2d(u, v, 64, 511)
-					h = macro * 0.40 + grain * 0.36 + blade * 0.24
-					var lum_h := clampf(0.64 + 0.30 * grain + 0.18 * (blade - 0.5), 0.40, 1.0)
-					c = Color(lum_h * 0.94, lum_h, lum_h * 0.88)
-				"icy":
-					var r1: float = 1.0 - absf(_periodic_noise2d(u, v, 8, 601) * 2.0 - 1.0)
-					var crack: float = pow(maxf(0.0, r1), 3.0)
-					h = macro * 0.35 + grain * 0.35 + grit * 0.15 - crack * 0.55
-					var lum_i := clampf(0.68 + 0.28 * grain - crack * 0.35, 0.38, 1.0)
-					c = Color(lum_i * 0.94, lum_i * 0.98, minf(1.0, lum_i * 1.05))
-				_:
-					var f1: float = 1.0 - absf(_periodic_noise2d(u, v, 8, 809) * 2.0 - 1.0)
-					var fiss: float = pow(maxf(0.0, f1), 4.0)
-					h = macro * 0.38 + grain * 0.38 - fiss * 0.60
-					var lum_v := clampf(0.58 + 0.32 * grain - fiss * 0.34, 0.34, 1.0)
-					c = Color(lum_v, lum_v * 0.92, lum_v * 0.82)
-
-			heights[py * size + px] = h
-			diff_img.set_pixel(px, py, c)
-
-	var strength: float = 3.6 if (key == "lunar" or key == "volcanic") else 2.8
-	for py in range(size):
-		var ym := (py - 1) & mask
-		var yp := (py + 1) & mask
-		for px in range(size):
-			var xm := (px - 1) & mask
-			var xp := (px + 1) & mask
-			var dhx := (heights[py * size + xp] - heights[py * size + xm]) * strength
-			var dhy := (heights[yp * size + px] - heights[ym * size + px]) * strength
-			var inv_len := 1.0 / sqrt(dhx * dhx + dhy * dhy + 1.0)
-			var nx := (-dhx * inv_len) * 0.5 + 0.5
-			var ny := (-dhy * inv_len) * 0.5 + 0.5
-			var nz := inv_len * 0.5 + 0.5
-			norm_img.set_pixel(px, py, Color(nx, ny, nz, 1.0))
-
-	diff_img.generate_mipmaps()
-	norm_img.generate_mipmaps()
 	var res := {
-		"diffuse": ImageTexture.create_from_image(diff_img),
-		"normal": ImageTexture.create_from_image(norm_img),
+		"diffuse": load(diff_path),
+		"normal": load(norm_path),
 	}
 	cache[key] = res
 	Engine.set_meta(&"space3d_pbr_cache", cache)
@@ -515,18 +460,25 @@ static func build_terrain_mesh(
 	t_mat.albedo_texture = tex["diffuse"]
 	t_mat.normal_enabled = true
 	t_mat.normal_texture = tex["normal"]
-	t_mat.normal_scale = 1.25
-	t_mat.uv1_scale = Vector3(36.0, 36.0, 1.0)
+	t_mat.normal_scale = 1.15
+	t_mat.uv1_scale = Vector3(110.0, 110.0, 1.0)
 	t_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-	t_mat.roughness = 0.42 if body["is_icy"] else 0.90
+	t_mat.roughness = 0.45 if body["is_icy"] else 0.88
 	t_mat.metallic = 0.02
 
 	var ocean_mesh: ArrayMesh = null
-	var ocean_mat: StandardMaterial3D = null
+	var ocean_mat: Material = null
 	if body["is_habitable"]:
-		var ocean_res := _build_ocean_mesh(body, body_pos64, anchor_pos64, inv_rot, up64, east64, north64, up_f, patch_half, compress_fn)
+		var ocean_res := _build_ocean_mesh(body, body_pos64, anchor_pos64, inv_rot, up64, east64, north64, up_f, patch_half, compress_fn, dom_axis, r_km, uv_ox, uv_oy)
 		ocean_mesh = ocean_res["mesh"]
 		ocean_mat = ocean_res["mat"]
+
+	var cloud_mesh: ArrayMesh = null
+	var cloud_mat: StandardMaterial3D = null
+	if float(body["cloud_coverage"]) > 0.20:
+		var cl_res := _build_cloud_deck_mesh(body, body_pos64, anchor_pos64, up64, east64, north64, up_f, patch_half, compress_fn)
+		cloud_mesh = cl_res["mesh"]
+		cloud_mat = cl_res["mat"]
 
 	var collision := TerrainCollision.new()
 	collision.body_id = body["id"]
@@ -547,8 +499,86 @@ static func build_terrain_mesh(
 		"terrain_mat": t_mat,
 		"ocean_mesh": ocean_mesh,
 		"ocean_mat": ocean_mat,
+		"cloud_mesh": cloud_mesh,
+		"cloud_mat": cloud_mat,
 		"collision": collision,
 	}
+
+static func _build_cloud_deck_mesh(
+	body: Dictionary,
+	body_pos64: PackedFloat64Array,
+	anchor_pos64: PackedFloat64Array,
+	up64: PackedFloat64Array,
+	east64: PackedFloat64Array,
+	north64: PackedFloat64Array,
+	up_f: Vector3,
+	patch_half: float,
+	compress_fn: Callable
+) -> Dictionary:
+	var n_c := 25
+	var r_m: float = float(body["radius_m"]) + 7_500.0
+	var pos_arr := PackedVector3Array(); pos_arr.resize(n_c * n_c)
+	var norm_arr := PackedVector3Array(); norm_arr.resize(n_c * n_c)
+	var uv_arr := PackedVector2Array(); uv_arr.resize(n_c * n_c)
+
+	for iz in range(n_c):
+		var tz := (float(iz) / float(n_c - 1)) * 2.0 - 1.0
+		for ix in range(n_c):
+			var tx := (float(ix) / float(n_c - 1)) * 2.0 - 1.0
+			var off := UniverseCatalog.v64_add(UniverseCatalog.v64_scale(east64, tx * patch_half * 1.4), UniverseCatalog.v64_scale(north64, tz * patch_half * 1.4))
+			var dir64 := UniverseCatalog.v64_norm(UniverseCatalog.v64_add(UniverseCatalog.v64_scale(up64, r_m), off))
+			var pt64 := UniverseCatalog.v64_add(body_pos64, UniverseCatalog.v64_scale(dir64, r_m))
+			var comp: Dictionary = compress_fn.call(UniverseCatalog.v64_sub(pt64, anchor_pos64))
+			var idx := iz * n_c + ix
+			pos_arr[idx] = comp["pos"]
+			norm_arr[idx] = UniverseCatalog.v64_to_vec3(dir64)
+			uv_arr[idx] = Vector2(tx * 2.5, tz * 2.5)
+
+	var indices := PackedInt32Array()
+	for iz in range(n_c - 1):
+		for ix in range(n_c - 1):
+			var i00 := iz * n_c + ix
+			var i10 := iz * n_c + (ix + 1)
+			var i01 := (iz + 1) * n_c + ix
+			var i11 := (iz + 1) * n_c + (ix + 1)
+			_append_outward_tri(i00, i10, i11, pos_arr, up_f, indices)
+			_append_outward_tri(i00, i11, i01, pos_arr, up_f, indices)
+
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = pos_arr
+	arrays[Mesh.ARRAY_NORMAL] = norm_arr
+	arrays[Mesh.ARRAY_TEX_UV] = uv_arr
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var c_mesh := ArrayMesh.new()
+	c_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+	var cache: Dictionary = Engine.get_meta(&"space3d_pbr_cache") if Engine.has_meta(&"space3d_pbr_cache") else {}
+	var ctex: ImageTexture
+	if cache.has("_surface_clouds"):
+		ctex = cache["_surface_clouds"]
+	else:
+		var sz := 128
+		var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
+		for py in range(sz):
+			var v := float(py) / float(sz)
+			for px in range(sz):
+				var u := float(px) / float(sz)
+				var n := _periodic_noise2d(u, v, 4, 911) * 0.6 + _periodic_noise2d(u, v, 8, 947) * 0.28 + _periodic_noise2d(u, v, 16, 977) * 0.12
+				var a := smoothstep(0.42, 0.78, n) * 0.78
+				img.set_pixel(px, py, Color(1.0, 1.0, 1.0, a))
+		img.generate_mipmaps()
+		ctex = ImageTexture.create_from_image(img)
+		cache["_surface_clouds"] = ctex
+		Engine.set_meta(&"space3d_pbr_cache", cache)
+
+	var c_mat := StandardMaterial3D.new()
+	c_mat.albedo_texture = ctex
+	c_mat.albedo_color = Color(0.96, 0.96, 0.98) if body["is_habitable"] else (body["color"] as Color).lightened(0.35)
+	c_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	c_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	c_mat.roughness = 0.95
+	return {"mesh": c_mesh, "mat": c_mat}
 
 static func _build_ocean_mesh(
 	body: Dictionary,
@@ -560,7 +590,11 @@ static func _build_ocean_mesh(
 	north64: PackedFloat64Array,
 	up_f: Vector3,
 	patch_half: float,
-	compress_fn: Callable
+	compress_fn: Callable,
+	dom_axis: int = 1,
+	r_km: float = 6_371.0,
+	uv_ox: float = 0.0,
+	uv_oy: float = 0.0
 ) -> Dictionary:
 	var n_o := 29
 	var r_m: float = body["radius_m"]
@@ -568,6 +602,8 @@ static func _build_ocean_mesh(
 	pos_arr.resize(n_o * n_o)
 	var norm_arr := PackedVector3Array()
 	norm_arr.resize(n_o * n_o)
+	var uv_arr := PackedVector2Array()
+	uv_arr.resize(n_o * n_o)
 
 	for iz in range(n_o):
 		var tz := (float(iz) / float(n_o - 1)) * 2.0 - 1.0
@@ -581,7 +617,10 @@ static func _build_ocean_mesh(
 			var comp: Dictionary = compress_fn.call(UniverseCatalog.v64_sub(pt64, anchor_pos64))
 			var idx := iz * n_o + ix
 			pos_arr[idx] = comp["pos"]
-			norm_arr[idx] = UniverseCatalog.v64_to_vec3(dir64)
+			var dir_f := UniverseCatalog.v64_to_vec3(dir64)
+			norm_arr[idx] = dir_f
+			var r_uv := _project_km_uv(inv_rot * dir_f, dom_axis, r_km)
+			uv_arr[idx] = Vector2(r_uv.x - uv_ox, r_uv.y - uv_oy)
 
 	var indices := PackedInt32Array()
 	for iz in range(n_o - 1):
@@ -597,15 +636,17 @@ static func _build_ocean_mesh(
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = pos_arr
 	arrays[Mesh.ARRAY_NORMAL] = norm_arr
+	arrays[Mesh.ARRAY_TEX_UV] = uv_arr
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var o_mesh := ArrayMesh.new()
 	o_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var st := SurfaceTool.new()
+	st.create_from(o_mesh, 0)
+	st.generate_tangents()
+	o_mesh = st.commit()
 
-	var o_mat := StandardMaterial3D.new()
-	o_mat.albedo_color = Color(0.03, 0.22, 0.45, 0.90)
-	o_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	o_mat.roughness = 0.08
-	o_mat.metallic = 0.22
+	var o_mat := ShaderMaterial.new()
+	o_mat.shader = preload("res://shaders/ocean_water.gdshader")
 	return {"mesh": o_mesh, "mat": o_mat}
 
 static func build_surface_props(
