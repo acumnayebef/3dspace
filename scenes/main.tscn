@@ -1,0 +1,39 @@
+[gd_scene load_steps=7 format=3 uid="uid://dspace3dmain001"]
+
+[ext_resource type="Script" path="res://scripts/main_controller.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/hud_controller.gd" id="2_hud"]
+[ext_resource type="Shader" path="res://shaders/sky_stars.gdshader" id="3_sky"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_sky"]
+shader = ExtResource("3_sky")
+
+[sub_resource type="Sky" id="Sky_space"]
+sky_material = SubResource("ShaderMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_space"]
+background_mode = 2
+sky = SubResource("Sky_space")
+ambient_light_source = 2
+ambient_light_color = Color(0.16, 0.22, 0.34, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+glow_enabled = false
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_space")
+
+[node name="SunLight" type="DirectionalLight3D" parent="."]
+light_color = Color(1, 0.98, 0.95, 1)
+light_energy = 1.2
+shadow_enabled = false
+
+[node name="MainCamera" type="Camera3D" parent="."]
+fov = 62.0
+near = 0.25
+far = 650000.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("2_hud")

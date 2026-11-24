@@ -1,0 +1,6 @@
+.godot/
+godot.exe
+Godot*.exe
+build/
+*.log
+*.tmp
